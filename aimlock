@@ -1,0 +1,408 @@
+-- Universal AimLock (Discord GUI Edition)
+-- R6/R15/custom rigs, universal targeting, persistent FOV
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+
+local DEFAULT_RADIUS = 80
+local DEFAULT_THICKNESS = 2
+local DEFAULT_FOV = Camera.FieldOfView
+local TARGET_PART_NAME = "Head"
+
+local aimEnabled = false
+local rmbDown = false
+local radius, thickness, fovValue = DEFAULT_RADIUS, DEFAULT_THICKNESS, DEFAULT_FOV
+local mouseLocation = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+local guiVisible = true
+
+local lockKey = Enum.KeyCode.V
+local listeningForLockKey = false
+
+local blurple = Color3.fromRGB(88,101,242)
+local darkBG = Color3.fromRGB(30,33,36)
+local darkTop = Color3.fromRGB(44,47,51)
+local hasDrawing = (type(Drawing) == "table")
+local drawingCircle, fallbackGui, fallbackCircle
+
+-- Aim Circle
+if hasDrawing then
+    drawingCircle = Drawing.new("Circle")
+    drawingCircle.Filled = false
+    drawingCircle.Visible = false
+    drawingCircle.Color = blurple
+    drawingCircle.Transparency = 0.6
+    drawingCircle.Radius = radius
+    drawingCircle.Thickness = thickness
+else
+    fallbackGui = Instance.new("ScreenGui")
+    fallbackGui.Name = "AimCircle"
+    fallbackGui.ResetOnSpawn = false
+    fallbackGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+    fallbackCircle = Instance.new("ImageLabel", fallbackGui)
+    fallbackCircle.AnchorPoint = Vector2.new(0.5,0.5)
+    fallbackCircle.BackgroundTransparency = 1
+    fallbackCircle.Image = "rbxassetid://3570695787"
+    fallbackCircle.ImageColor3 = blurple
+    fallbackCircle.ImageTransparency = 0.6
+    fallbackCircle.Size = UDim2.new(0, radius*2, 0, radius*2)
+end
+
+local function setCircleVisible(v)
+    if hasDrawing then
+        drawingCircle.Visible = v
+    else
+        if fallbackGui then fallbackGui.Enabled = v end
+    end
+end
+
+local function dist(a,b)
+    local dx,dy = a.X-b.X, a.Y-b.Y
+    return math.sqrt(dx*dx + dy*dy)
+end
+
+-- Universal part selection
+local function getBestPart(char)
+    if not char then return nil end
+
+    local priority = {
+        "Head","UpperTorso","LowerTorso","Torso","HumanoidRootPart"
+    }
+
+    for _,name in ipairs(priority) do
+        local p = char:FindFirstChild(name)
+        if p and p:IsA("BasePart") then return p end
+    end
+
+    for _,obj in ipairs(char:GetChildren()) do
+        if obj:IsA("BasePart") then return obj end
+    end
+
+    for _,acc in ipairs(char:GetChildren()) do
+        if acc:IsA("Accessory") and acc:FindFirstChild("Handle") then
+            return acc.Handle
+        end
+    end
+
+    return nil
+end
+
+local function findTarget(cursorPos)
+    local best, bestDist
+    for _,plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer and plr.Character then
+            local part = getBestPart(plr.Character)
+            if part then
+                local screenPos, onScreen = Camera:WorldToViewportPoint(part.Position)
+                if onScreen then
+                    local screenVec = Vector2.new(screenPos.X, screenPos.Y)
+                    local d = dist(screenVec, cursorPos)
+                    if d <= radius and (not bestDist or d < bestDist) then
+                        best, bestDist = part, d
+                    end
+                end
+            end
+        end
+    end
+    return best
+end
+
+-- Input
+UserInputService.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement then
+        mouseLocation = UserInputService:GetMouseLocation()
+    end
+end)
+
+UserInputService.InputBegan:Connect(function(input)
+    if input.KeyCode == lockKey then
+        rmbDown = true
+    end
+
+    if listeningForLockKey and input.UserInputType == Enum.UserInputType.Keyboard then
+        if input.KeyCode ~= Enum.KeyCode.Unknown then
+            lockKey = input.KeyCode
+            lockKeyBtn.Text = "Key: " .. lockKey.Name
+            listeningForLockKey = false
+            changeLockKeyBtn.Text = "Change Key"
+        end
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.KeyCode == lockKey then
+        rmbDown = false
+    end
+end)
+
+-- Render
+RunService.RenderStepped:Connect(function()
+    if aimEnabled then
+        if hasDrawing then
+            drawingCircle.Position = mouseLocation
+            drawingCircle.Radius = radius
+            drawingCircle.Thickness = thickness
+            drawingCircle.Visible = true
+        else
+            fallbackCircle.Position = UDim2.new(0, mouseLocation.X, 0, mouseLocation.Y)
+            fallbackCircle.Size = UDim2.new(0, radius*2, 0, radius*2)
+        end
+    else
+        setCircleVisible(false)
+    end
+
+    if aimEnabled and rmbDown then
+        local target = findTarget(mouseLocation)
+        if target then
+            local camPos = Camera.CFrame.Position
+            Camera.CFrame = CFrame.new(camPos, target.Position)
+        end
+    end
+
+    Camera.FieldOfView = fovValue
+end)
+
+-- GUI
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "AdminPanel"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+local frame = Instance.new("Frame", screenGui)
+frame.Size = UDim2.new(0, 180, 0, 380)
+frame.AnchorPoint = Vector2.new(0.5, 0.5)
+frame.Position = UDim2.new(0.5, 0, 0.5, 0)
+frame.BackgroundColor3 = darkBG
+frame.BorderSizePixel = 0
+
+local dragBar = Instance.new("Frame", frame)
+dragBar.Size = UDim2.new(1,0,0,20)
+dragBar.BackgroundColor3 = darkTop
+
+local dragLabel = Instance.new("TextLabel", dragBar)
+dragLabel.Size = UDim2.new(1,0,1,0)
+dragLabel.BackgroundTransparency = 1
+dragLabel.Text = "AimLock Sys 2.0"
+dragLabel.TextColor3 = Color3.new(1,1,1)
+dragLabel.Font = Enum.Font.SourceSansBold
+dragLabel.TextSize = 14
+
+local dragging = false
+local dragStart, startPos
+dragBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true
+        dragStart = input.Position
+        startPos = frame.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then dragging = false end
+        end)
+    end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+        local delta = input.Position - dragStart
+        frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+end)
+
+local function makeToggle(name, yPos, callback)
+    local button = Instance.new("TextButton", frame)
+    button.Size = UDim2.new(1, -16, 0, 28)
+    button.Position = UDim2.new(0, 8, 0, yPos)
+    button.Text = name .. ": OFF"
+    button.TextColor3 = Color3.new(1,1,1)
+    button.BackgroundColor3 = blurple
+    button.Font = Enum.Font.SourceSans
+    button.TextSize = 14
+    button.MouseButton1Click:Connect(function()
+        local state = callback()
+        button.Text = name .. (state and ": ON" or ": OFF")
+    end)
+end
+
+local y = 28
+local gap = 8
+
+makeToggle("AimLock", y, function()
+    aimEnabled = not aimEnabled
+    setCircleVisible(aimEnabled)
+    return aimEnabled
+end)
+
+y = y + 28 + gap
+
+local function createSlider(labelText, yPos, maxVal, initialVal, callback)
+    local label = Instance.new("TextLabel", frame)
+    label.Size = UDim2.new(1, -16, 0, 14)
+    label.Position = UDim2.new(0, 8, 0, yPos)
+    label.Text = labelText
+    label.TextColor3 = Color3.new(1,1,1)
+    label.BackgroundTransparency = 1
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.Font = Enum.Font.SourceSans
+    label.TextSize = 12
+
+    local back = Instance.new("Frame", frame)
+    back.Size = UDim2.new(1, -16, 0, 8)
+    back.Position = UDim2.new(0, 8, 0, yPos + 16)
+    back.BackgroundColor3 = Color3.fromRGB(20,20,20)
+    back.BorderSizePixel = 0
+
+    local fill = Instance.new("Frame", back)
+    fill.Size = UDim2.new(math.clamp(initialVal / maxVal, 0, 1), 0, 1, 0)
+    fill.BackgroundColor3 = blurple
+
+    local draggingFill = false
+    back.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then draggingFill = true end end)
+    back.InputEnded:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then draggingFill = false end end)
+    UserInputService.InputChanged:Connect(function(input)
+        if draggingFill and input.UserInputType == Enum.UserInputType.MouseMovement then
+            local relX = math.clamp(input.Position.X - back.AbsolutePosition.X, 0, back.AbsoluteSize.X)
+            fill.Size = UDim2.new(0, relX, 1, 0)
+            local val = (relX / back.AbsoluteSize.X) * maxVal
+            callback(val)
+        end
+    end)
+end
+
+createSlider("Radius", y, 200, radius, function(val) radius = val end)
+y = y + 30
+
+createSlider("Thickness", y, 10, thickness, function(val) thickness = val end)
+y = y + 30
+
+createSlider("FOV", y, 140, fovValue, function(val) fovValue = val end)
+y = y + 30
+
+-- Target Dropdown
+local targetLabel = Instance.new("TextLabel", frame)
+targetLabel.Size = UDim2.new(1, -16, 0, 16)
+targetLabel.Position = UDim2.new(0, 8, 0, y)
+targetLabel.Text = "Target"
+targetLabel.TextColor3 = Color3.new(1,1,1)
+targetLabel.BackgroundTransparency = 1
+targetLabel.TextXAlignment = Enum.TextXAlignment.Left
+targetLabel.Font = Enum.Font.SourceSans
+targetLabel.TextSize = 12
+
+y = y + 18
+
+local targetDropdown = Instance.new("TextButton", frame)
+targetDropdown.Size = UDim2.new(1, -16, 0, 26)
+targetDropdown.Position = UDim2.new(0, 8, 0, y)
+targetDropdown.Text = TARGET_PART_NAME
+targetDropdown.TextColor3 = Color3.new(1,1,1)
+targetDropdown.BackgroundColor3 = blurple
+targetDropdown.Font = Enum.Font.SourceSans
+targetDropdown.TextSize = 14
+
+y = y + 26 + 6
+
+local dropdownOpen = false
+local optionsFrame = Instance.new("Frame", frame)
+optionsFrame.Size = UDim2.new(1, -16, 0, 0)
+optionsFrame.Position = UDim2.new(0, 8, 0, y)
+optionsFrame.BackgroundColor3 = darkTop
+optionsFrame.ClipsDescendants = true
+
+local function createOption(name)
+    local btn = Instance.new("TextButton", optionsFrame)
+    btn.Size = UDim2.new(1, 0, 0, 26)
+    btn.Position = UDim2.new(0, 0, 0, (#optionsFrame:GetChildren() * 26) - 26)
+    btn.Text = name
+    btn.TextColor3 = Color3.new(1,1,1)
+    btn.BackgroundColor3 = blurple
+    btn.Font = Enum.Font.SourceSans
+    btn.TextSize = 14
+    btn.MouseButton1Click:Connect(function()
+        TARGET_PART_NAME = name
+        targetDropdown.Text = name
+        optionsFrame.Size = UDim2.new(1, -16, 0, 0)
+        dropdownOpen = false
+    end)
+end
+
+createOption("Head")
+createOption("Torso")
+createOption("HumanoidRootPart")
+
+targetDropdown.MouseButton1Click:Connect(function()
+    dropdownOpen = not dropdownOpen
+    optionsFrame.Size = dropdownOpen and UDim2.new(1, -16, 0, 78) or UDim2.new(1, -16, 0, 0)
+end)
+
+-- Lock Key
+y = y + 6
+
+local lockLabel = Instance.new("TextLabel", frame)
+lockLabel.Size = UDim2.new(1, -16, 0, 16)
+lockLabel.Position = UDim2.new(0, 8, 0, y)
+lockLabel.Text = "Lock Key"
+lockLabel.TextColor3 = Color3.new(1,1,1)
+lockLabel.BackgroundTransparency = 1
+lockLabel.TextXAlignment = Enum.TextXAlignment.Left
+lockLabel.Font = Enum.Font.SourceSans
+lockLabel.TextSize = 12
+
+y = y + 18
+
+lockKeyBtn = Instance.new("TextButton", frame)
+lockKeyBtn.Size = UDim2.new(1, -16, 0, 26)
+lockKeyBtn.Position = UDim2.new(0, 8, 0, y)
+lockKeyBtn.Text = "Key: " .. lockKey.Name
+lockKeyBtn.TextColor3 = Color3.new(1,1,1)
+lockKeyBtn.BackgroundColor3 = blurple
+lockKeyBtn.Font = Enum.Font.SourceSans
+lockKeyBtn.TextSize = 14
+
+y = y + 26 + 6
+
+changeLockKeyBtn = Instance.new("TextButton", frame)
+changeLockKeyBtn.Size = UDim2.new(1, -16, 0, 26)
+changeLockKeyBtn.Position = UDim2.new(0, 8, 0, y)
+changeLockKeyBtn.Text = "Change Key"
+changeLockKeyBtn.TextColor3 = Color3.new(1,1,1)
+changeLockKeyBtn.BackgroundColor3 = blurple
+changeLockKeyBtn.Font = Enum.Font.SourceSans
+changeLockKeyBtn.TextSize = 14
+
+changeLockKeyBtn.MouseButton1Click:Connect(function()
+    if listeningForLockKey then return end
+    listeningForLockKey = true
+    changeLockKeyBtn.Text = "Press a key..."
+    lockKeyBtn.Text = "Key: ..."
+end)
+
+-- AUTO‑FIT EVERYTHING INSIDE THE GUI
+task.defer(function()
+    local padding = 8
+    local totalHeight = 0
+
+    for _, child in ipairs(frame:GetChildren()) do
+        if child:IsA("GuiObject") then
+            local yPos = child.AbsolutePosition.Y - frame.AbsolutePosition.Y
+            local h = child.AbsoluteSize.Y
+            totalHeight = math.max(totalHeight, yPos + h)
+        end
+    end
+
+    frame.Size = UDim2.new(0, 180, 0, totalHeight + padding)
+end)
+
+-- GUI toggle (F4)
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == Enum.KeyCode.F4 then
+        guiVisible = not guiVisible
+        screenGui.Enabled = guiVisible
+    end
+end)
+
+LocalPlayer.CharacterAdded:Connect(function()
+    wait(0.1)
+    Camera.FieldOfView = fovValue
+end)
