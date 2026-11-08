@@ -47,7 +47,7 @@ local strength = 100 -- Camera tracking strength (0-100)
 local mouseLocation = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
 local guiVisible = true
 
-local lockKey = Enum.KeyCode.V
+local lockKey = Enum.KeyCode.F
 local listeningForLockKey = false
 
 local blurple = Color3.fromRGB(34, 197, 94)
