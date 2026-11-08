@@ -46,7 +46,7 @@ local radius, thickness, fovValue = DEFAULT_RADIUS, DEFAULT_THICKNESS, DEFAULT_F
 local mouseLocation = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
 local guiVisible = true
 
-local lockKey = Enum.KeyCode.V
+local lockKey = Enum.KeyCode.f
 local listeningForLockKey = false
 
 local blurple = Color3.fromRGB(88,101,242)
