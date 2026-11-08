@@ -6,6 +6,34 @@ local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
+local CoreGui = game:GetService("CoreGui")
+local uiParent = CoreGui
+local globalEnvironment = (getgenv and getgenv()) or _G
+local INSTANCE_KEY = "__UniversalAimLockActive"
+
+-- Fully unload the previous execution before starting this one.
+if type(globalEnvironment[INSTANCE_KEY]) == "table" and globalEnvironment[INSTANCE_KEY].Unload then
+    pcall(globalEnvironment[INSTANCE_KEY].Unload)
+end
+
+local connections = {}
+local createdObjects = {}
+local unloaded = false
+local previousFov = workspace.CurrentCamera.FieldOfView
+local function track(connection)
+    table.insert(connections, connection)
+    return connection
+end
+local function own(object)
+    table.insert(createdObjects, object)
+    return object
+end
+
+
+for _, name in ipairs({"AdminPanel", "AimCircle"}) do
+    local stale = uiParent:FindFirstChild(name)
+    if stale then stale:Destroy() end
+end
 
 local DEFAULT_RADIUS = 80
 local DEFAULT_THICKNESS = 2
@@ -37,10 +65,10 @@ if hasDrawing then
     drawingCircle.Radius = radius
     drawingCircle.Thickness = thickness
 else
-    fallbackGui = Instance.new("ScreenGui")
+    fallbackGui = own(Instance.new("ScreenGui"))
     fallbackGui.Name = "AimCircle"
     fallbackGui.ResetOnSpawn = false
-    fallbackGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+    fallbackGui.Parent = uiParent
 
     fallbackCircle = Instance.new("ImageLabel", fallbackGui)
     fallbackCircle.AnchorPoint = Vector2.new(0.5,0.5)
@@ -111,13 +139,13 @@ local function findTarget(cursorPos)
 end
 
 -- Input
-UserInputService.InputChanged:Connect(function(input)
+track(UserInputService.InputChanged:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseMovement then
         mouseLocation = UserInputService:GetMouseLocation()
     end
-end)
+end))
 
-UserInputService.InputBegan:Connect(function(input)
+track(UserInputService.InputBegan:Connect(function(input)
     if input.KeyCode == lockKey then
         rmbDown = true
     end
@@ -130,16 +158,16 @@ UserInputService.InputBegan:Connect(function(input)
             changeLockKeyBtn.Text = "Change Key"
         end
     end
-end)
+end))
 
-UserInputService.InputEnded:Connect(function(input)
+track(UserInputService.InputEnded:Connect(function(input)
     if input.KeyCode == lockKey then
         rmbDown = false
     end
-end)
+end))
 
 -- Render
-RunService.RenderStepped:Connect(function()
+track(RunService.RenderStepped:Connect(function()
     if aimEnabled then
         if hasDrawing then
             drawingCircle.Position = mouseLocation
@@ -163,13 +191,13 @@ RunService.RenderStepped:Connect(function()
     end
 
     Camera.FieldOfView = fovValue
-end)
+end))
 
 -- GUI
-local screenGui = Instance.new("ScreenGui")
+local screenGui = own(Instance.new("ScreenGui"))
 screenGui.Name = "AdminPanel"
 screenGui.ResetOnSpawn = false
-screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+screenGui.Parent = uiParent
 
 local frame = Instance.new("Frame", screenGui)
 frame.Size = UDim2.new(0, 180, 0, 380)
@@ -192,22 +220,22 @@ dragLabel.TextSize = 14
 
 local dragging = false
 local dragStart, startPos
-dragBar.InputBegan:Connect(function(input)
+track(dragBar.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 then
         dragging = true
         dragStart = input.Position
         startPos = frame.Position
-        input.Changed:Connect(function()
+        track(input.Changed:Connect(function()
             if input.UserInputState == Enum.UserInputState.End then dragging = false end
-        end)
+        end))
     end
-end)
-UserInputService.InputChanged:Connect(function(input)
+end))
+track(UserInputService.InputChanged:Connect(function(input)
     if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
         local delta = input.Position - dragStart
         frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
     end
-end)
+end))
 
 local function makeToggle(name, yPos, callback)
     local button = Instance.new("TextButton", frame)
@@ -218,10 +246,10 @@ local function makeToggle(name, yPos, callback)
     button.BackgroundColor3 = blurple
     button.Font = Enum.Font.SourceSans
     button.TextSize = 14
-    button.MouseButton1Click:Connect(function()
+    track(button.MouseButton1Click:Connect(function()
         local state = callback()
         button.Text = name .. (state and ": ON" or ": OFF")
-    end)
+    end))
 end
 
 local y = 28
@@ -257,16 +285,16 @@ local function createSlider(labelText, yPos, maxVal, initialVal, callback)
     fill.BackgroundColor3 = blurple
 
     local draggingFill = false
-    back.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then draggingFill = true end end)
-    back.InputEnded:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then draggingFill = false end end)
-    UserInputService.InputChanged:Connect(function(input)
+    track(back.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then draggingFill = true end end))
+    track(back.InputEnded:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then draggingFill = false end end))
+    track(UserInputService.InputChanged:Connect(function(input)
         if draggingFill and input.UserInputType == Enum.UserInputType.MouseMovement then
             local relX = math.clamp(input.Position.X - back.AbsolutePosition.X, 0, back.AbsoluteSize.X)
             fill.Size = UDim2.new(0, relX, 1, 0)
             local val = (relX / back.AbsoluteSize.X) * maxVal
             callback(val)
         end
-    end)
+    end))
 end
 
 createSlider("Radius", y, 200, radius, function(val) radius = val end)
@@ -318,22 +346,22 @@ local function createOption(name)
     btn.BackgroundColor3 = blurple
     btn.Font = Enum.Font.SourceSans
     btn.TextSize = 14
-    btn.MouseButton1Click:Connect(function()
+    track(btn.MouseButton1Click:Connect(function()
         TARGET_PART_NAME = name
         targetDropdown.Text = name
         optionsFrame.Size = UDim2.new(1, -16, 0, 0)
         dropdownOpen = false
-    end)
+    end))
 end
 
 createOption("Head")
 createOption("Torso")
 createOption("HumanoidRootPart")
 
-targetDropdown.MouseButton1Click:Connect(function()
+track(targetDropdown.MouseButton1Click:Connect(function()
     dropdownOpen = not dropdownOpen
     optionsFrame.Size = dropdownOpen and UDim2.new(1, -16, 0, 78) or UDim2.new(1, -16, 0, 0)
-end)
+end))
 
 -- Lock Key
 y = y + 6
@@ -370,12 +398,12 @@ changeLockKeyBtn.BackgroundColor3 = blurple
 changeLockKeyBtn.Font = Enum.Font.SourceSans
 changeLockKeyBtn.TextSize = 14
 
-changeLockKeyBtn.MouseButton1Click:Connect(function()
+track(changeLockKeyBtn.MouseButton1Click:Connect(function()
     if listeningForLockKey then return end
     listeningForLockKey = true
     changeLockKeyBtn.Text = "Press a key..."
     lockKeyBtn.Text = "Key: ..."
-end)
+end))
 
 -- AUTO‑FIT EVERYTHING INSIDE THE GUI
 task.defer(function()
@@ -394,15 +422,42 @@ task.defer(function()
 end)
 
 -- GUI toggle (F4)
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
+track(UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
     if input.KeyCode == Enum.KeyCode.F4 then
         guiVisible = not guiVisible
         screenGui.Enabled = guiVisible
     end
-end)
+end))
 
-LocalPlayer.CharacterAdded:Connect(function()
+track(LocalPlayer.CharacterAdded:Connect(function()
     wait(0.1)
     Camera.FieldOfView = fovValue
-end)
+end))
+
+local function unload()
+    if unloaded then return end
+    unloaded = true
+    aimEnabled = false
+    rmbDown = false
+    for _, connection in ipairs(connections) do
+        pcall(function() connection:Disconnect() end)
+    end
+    table.clear(connections)
+    if drawingCircle then
+        pcall(function() drawingCircle:Remove() end)
+        drawingCircle = nil
+    end
+    for _, object in ipairs(createdObjects) do
+        pcall(function() object:Destroy() end)
+    end
+    table.clear(createdObjects)
+    if workspace.CurrentCamera then
+        workspace.CurrentCamera.FieldOfView = previousFov
+    end
+    if globalEnvironment[INSTANCE_KEY] and globalEnvironment[INSTANCE_KEY].Unload == unload then
+        globalEnvironment[INSTANCE_KEY] = nil
+    end
+end
+
+globalEnvironment[INSTANCE_KEY] = {Unload = unload}
