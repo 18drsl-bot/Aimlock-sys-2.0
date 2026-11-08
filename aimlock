@@ -92,29 +92,24 @@ local function dist(a,b)
     return math.sqrt(dx*dx + dy*dy)
 end
 
--- Universal part selection
+-- Resolve the selected target across R6, R15 and custom rigs.
 local function getBestPart(char)
     if not char then return nil end
-
-    local priority = {
-        "Head","UpperTorso","LowerTorso","Torso","HumanoidRootPart"
-    }
-
-    for _,name in ipairs(priority) do
-        local p = char:FindFirstChild(name)
-        if p and p:IsA("BasePart") then return p end
+    local priorities
+    if TARGET_PART_NAME == "Head" then
+        priorities = {"Head", "UpperTorso", "Torso", "LowerTorso", "HumanoidRootPart"}
+    elseif TARGET_PART_NAME == "Torso" then
+        priorities = {"UpperTorso", "Torso", "LowerTorso", "HumanoidRootPart", "Head"}
+    else
+        priorities = {"HumanoidRootPart", "UpperTorso", "Torso", "LowerTorso", "Head"}
     end
-
-    for _,obj in ipairs(char:GetChildren()) do
+    for _, name in ipairs(priorities) do
+        local part = char:FindFirstChild(name)
+        if part and part:IsA("BasePart") then return part end
+    end
+    for _, obj in ipairs(char:GetChildren()) do
         if obj:IsA("BasePart") then return obj end
     end
-
-    for _,acc in ipairs(char:GetChildren()) do
-        if acc:IsA("Accessory") and acc:FindFirstChild("Handle") then
-            return acc.Handle
-        end
-    end
-
     return nil
 end
 
@@ -337,30 +332,32 @@ optionsFrame.Position = UDim2.new(0, 8, 0, y)
 optionsFrame.BackgroundColor3 = darkTop
 optionsFrame.ClipsDescendants = true
 
-local function createOption(name)
+local targetOptions = {"Head", "Torso", "HumanoidRootPart"}
+local OPTION_HEIGHT = 26
+local function updateDropdown()
+    optionsFrame.Size = UDim2.new(1, -16, 0, dropdownOpen and (#targetOptions * OPTION_HEIGHT) or 0)
+end
+
+for index, name in ipairs(targetOptions) do
     local btn = Instance.new("TextButton", optionsFrame)
-    btn.Size = UDim2.new(1, 0, 0, 26)
-    btn.Position = UDim2.new(0, 0, 0, (#optionsFrame:GetChildren() * 26) - 26)
+    btn.Size = UDim2.new(1, 0, 0, OPTION_HEIGHT)
+    btn.Position = UDim2.fromOffset(0, (index - 1) * OPTION_HEIGHT)
     btn.Text = name
-    btn.TextColor3 = Color3.new(1,1,1)
+    btn.TextColor3 = Color3.new(1, 1, 1)
     btn.BackgroundColor3 = blurple
     btn.Font = Enum.Font.SourceSans
     btn.TextSize = 14
     track(btn.MouseButton1Click:Connect(function()
         TARGET_PART_NAME = name
         targetDropdown.Text = name
-        optionsFrame.Size = UDim2.new(1, -16, 0, 0)
         dropdownOpen = false
+        updateDropdown()
     end))
 end
 
-createOption("Head")
-createOption("Torso")
-createOption("HumanoidRootPart")
-
 track(targetDropdown.MouseButton1Click:Connect(function()
     dropdownOpen = not dropdownOpen
-    optionsFrame.Size = dropdownOpen and UDim2.new(1, -16, 0, 78) or UDim2.new(1, -16, 0, 0)
+    updateDropdown()
 end))
 
 -- Lock Key
@@ -405,21 +402,51 @@ track(changeLockKeyBtn.MouseButton1Click:Connect(function()
     lockKeyBtn.Text = "Key: ..."
 end))
 
--- AUTO‑FIT EVERYTHING INSIDE THE GUI
-task.defer(function()
-    local padding = 8
-    local totalHeight = 0
+-- Automatically fit the menu when options are added, removed, or expanded.
+-- The original Y positions are the collapsed layout; expanding the dropdown
+-- shifts controls below it without covering them.
+local basePositions = {}
+for _, child in ipairs(frame:GetChildren()) do
+    if child:IsA("GuiObject") then
+        basePositions[child] = child.Position
+    end
+end
 
+local fitting = false
+local function fitMenu()
+    if fitting or unloaded then return end
+    fitting = true
+    local shift = optionsFrame.Size.Y.Offset
+    local dropdownBottom = optionsFrame.Position.Y.Offset
+    local maxBottom = 0
     for _, child in ipairs(frame:GetChildren()) do
         if child:IsA("GuiObject") then
-            local yPos = child.AbsolutePosition.Y - frame.AbsolutePosition.Y
-            local h = child.AbsoluteSize.Y
-            totalHeight = math.max(totalHeight, yPos + h)
+            if not basePositions[child] then basePositions[child] = child.Position end
+            local base = basePositions[child]
+            local y = base.Y.Offset
+            if child ~= optionsFrame and y >= dropdownBottom then
+                y = y + shift
+            end
+            child.Position = UDim2.new(base.X.Scale, base.X.Offset, base.Y.Scale, y)
+            maxBottom = math.max(maxBottom, y + child.Size.Y.Offset)
         end
     end
+    frame.Size = UDim2.fromOffset(180, maxBottom + 8)
+    fitting = false
+end
 
-    frame.Size = UDim2.new(0, 180, 0, totalHeight + padding)
-end)
+track(optionsFrame:GetPropertyChangedSignal("Size"):Connect(fitMenu))
+track(frame.ChildAdded:Connect(function(child)
+    if child:IsA("GuiObject") then
+        basePositions[child] = child.Position
+        task.defer(fitMenu)
+    end
+end))
+track(frame.ChildRemoved:Connect(function(child)
+    basePositions[child] = nil
+    task.defer(fitMenu)
+end))
+fitMenu()
 
 -- GUI toggle (F4)
 track(UserInputService.InputBegan:Connect(function(input, gameProcessed)
