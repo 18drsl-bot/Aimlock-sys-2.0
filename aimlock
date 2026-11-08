@@ -50,9 +50,9 @@ local guiVisible = true
 local lockKey = Enum.KeyCode.V
 local listeningForLockKey = false
 
-local blurple = Color3.fromRGB(35, 125, 255)
-local darkBG = Color3.fromRGB(30,33,36)
-local darkTop = Color3.fromRGB(44,47,51)
+local blurple = Color3.fromRGB(34, 197, 94)
+local darkBG = Color3.fromRGB(17, 24, 21)
+local darkTop = Color3.fromRGB(29, 42, 35)
 local hasDrawing = (type(Drawing) == "table")
 local drawingCircle, fallbackGui, fallbackCircle
 
@@ -187,7 +187,7 @@ track(RunService.RenderStepped:Connect(function()
         end
     end
 
-    Camera.FieldOfView = fovValue
+    Camera.FieldOfView = math.clamp(fovValue, 1, 120)
 end))
 
 -- GUI
@@ -197,23 +197,23 @@ screenGui.ResetOnSpawn = false
 screenGui.Parent = uiParent
 
 local frame = Instance.new("Frame", screenGui)
-frame.Size = UDim2.new(0, 180, 0, 380)
+frame.Size = UDim2.new(0, 240, 0, 380)
 frame.AnchorPoint = Vector2.new(0.5, 0.5)
 frame.Position = UDim2.new(0.5, 0, 0.5, 0)
 frame.BackgroundColor3 = darkBG
 frame.BorderSizePixel = 0
 
 local dragBar = Instance.new("Frame", frame)
-dragBar.Size = UDim2.new(1,0,0,20)
+dragBar.Size = UDim2.new(1,0,0,32)
 dragBar.BackgroundColor3 = darkTop
 
 local dragLabel = Instance.new("TextLabel", dragBar)
 dragLabel.Size = UDim2.new(1,0,1,0)
 dragLabel.BackgroundTransparency = 1
-dragLabel.Text = "AimLock Sys 2.0"
+dragLabel.Text = "  AIMLOCK  •  CONTROL"
 dragLabel.TextColor3 = Color3.new(1,1,1)
-dragLabel.Font = Enum.Font.SourceSansBold
-dragLabel.TextSize = 14
+dragLabel.Font = Enum.Font.GothamBold
+dragLabel.TextSize = 15
 
 local dragging = false
 local dragStart, startPos
@@ -236,12 +236,12 @@ end))
 
 local function makeToggle(name, yPos, callback)
     local button = Instance.new("TextButton", frame)
-    button.Size = UDim2.new(1, -16, 0, 28)
-    button.Position = UDim2.new(0, 8, 0, yPos)
+    button.Size = UDim2.new(1, -24, 0, 32)
+    button.Position = UDim2.new(0, 12, 0, yPos)
     button.Text = name .. ": OFF"
     button.TextColor3 = Color3.new(1,1,1)
     button.BackgroundColor3 = blurple
-    button.Font = Enum.Font.SourceSans
+    button.Font = Enum.Font.GothamMedium
     button.TextSize = 14
     track(button.MouseButton1Click:Connect(function()
         local state = callback()
@@ -249,7 +249,7 @@ local function makeToggle(name, yPos, callback)
     end))
 end
 
-local y = 28
+local y = 42
 local gap = 8
 
 makeToggle("AimLock", y, function()
@@ -258,23 +258,23 @@ makeToggle("AimLock", y, function()
     return aimEnabled
 end)
 
-y = y + 28 + gap
+y = y + 32 + gap
 
 -- Draggable horizontal sliders with a visible handle and live percentage/value.
 local function createSlider(labelText, yPos, maxVal, initialVal, callback)
     local label = Instance.new("TextLabel", frame)
     label.Size = UDim2.new(1, -16, 0, 17)
-    label.Position = UDim2.fromOffset(8, yPos)
+    label.Position = UDim2.fromOffset(12, yPos)
     label.BackgroundTransparency = 1
     label.TextColor3 = Color3.new(1, 1, 1)
     label.TextXAlignment = Enum.TextXAlignment.Left
-    label.Font = Enum.Font.SourceSans
+    label.Font = Enum.Font.GothamMedium
     label.TextSize = 13
 
     local bar = Instance.new("TextButton", frame)
-    bar.Size = UDim2.new(1, -28, 0, 14)
-    bar.Position = UDim2.fromOffset(14, yPos + 21)
-    bar.BackgroundColor3 = Color3.fromRGB(55, 55, 55)
+    bar.Size = UDim2.new(1, -36, 0, 10)
+    bar.Position = UDim2.fromOffset(18, yPos + 23)
+    bar.BackgroundColor3 = Color3.fromRGB(53, 69, 59)
     bar.BorderSizePixel = 0
     bar.Text = ""
     bar.AutoButtonColor = false
@@ -288,7 +288,7 @@ local function createSlider(labelText, yPos, maxVal, initialVal, callback)
     fillCorner.CornerRadius = UDim.new(1, 0)
 
     local handle = Instance.new("Frame", bar)
-    handle.Size = UDim2.fromOffset(18, 18)
+    handle.Size = UDim2.fromOffset(17, 17)
     handle.AnchorPoint = Vector2.new(0.5, 0.5)
     handle.BackgroundColor3 = blurple
     handle.BorderSizePixel = 0
@@ -467,7 +467,7 @@ local function fitMenu()
             maxBottom = math.max(maxBottom, y + child.Size.Y.Offset)
         end
     end
-    frame.Size = UDim2.fromOffset(180, maxBottom + 8)
+    frame.Size = UDim2.fromOffset(240, maxBottom + 16)
     fitting = false
 end
 
@@ -484,6 +484,38 @@ track(frame.ChildRemoved:Connect(function(child)
 end))
 fitMenu()
 
+-- Modern rounded panels, soft outlines and refined controls.
+local function round(instance, radius)
+    if instance:FindFirstChildOfClass("UICorner") then return end
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, radius)
+    corner.Parent = instance
+end
+round(frame, 14)
+round(dragBar, 12)
+round(optionsFrame, 9)
+local outline = Instance.new("UIStroke")
+outline.Color = Color3.fromRGB(55, 87, 65)
+outline.Thickness = 1
+outline.Transparency = 0.3
+outline.Parent = frame
+for _, item in ipairs(frame:GetDescendants()) do
+    if item:IsA("TextButton") then
+        round(item, 8)
+        item.Font = Enum.Font.GothamMedium
+        item.TextSize = 13
+        if item ~= targetDropdown and item ~= lockKeyBtn and item ~= changeLockKeyBtn and item.Parent ~= optionsFrame and item.Text ~= "" then
+            item.BackgroundColor3 = darkTop
+        end
+    elseif item:IsA("TextLabel") and item ~= dragLabel then
+        item.Font = Enum.Font.GothamMedium
+    end
+end
+-- Preserve green for action controls and slider fills.
+for _, item in ipairs(optionsFrame:GetChildren()) do
+    if item:IsA("TextButton") then item.BackgroundColor3 = darkTop end
+end
+
 -- GUI toggle (F4)
 track(UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
@@ -495,7 +527,7 @@ end))
 
 track(LocalPlayer.CharacterAdded:Connect(function()
     wait(0.1)
-    Camera.FieldOfView = fovValue
+    Camera.FieldOfView = math.clamp(fovValue, 1, 120)
 end))
 
 local function unload()
